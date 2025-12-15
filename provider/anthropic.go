@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	medahttp "github.com/medatechnology/goutil/http"
+	"github.com/medatechnology/goutil/utils"
 	"github.com/medatechnology/simpleai"
 )
 
@@ -61,6 +62,15 @@ func NewAnthropic(config AnthropicConfig) *Anthropic {
 		config: config,
 		client: client,
 	}
+}
+
+// NewAnthropicFromEnv creates an Anthropic provider from environment variables
+// Environment variables: ANTHROPIC_API_KEY, ANTHROPIC_MODEL (optional)
+func NewAnthropicFromEnv() *Anthropic {
+	return NewAnthropic(AnthropicConfig{
+		APIKey: utils.GetEnvString("ANTHROPIC_API_KEY", ""),
+		Model:  utils.GetEnvString("ANTHROPIC_MODEL", AnthropicDefaultModel),
+	})
 }
 
 // Name returns the provider name

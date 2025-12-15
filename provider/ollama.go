@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	medahttp "github.com/medatechnology/goutil/http"
+	"github.com/medatechnology/goutil/utils"
 	"github.com/medatechnology/simpleai"
 )
 
@@ -57,6 +58,15 @@ func NewOllama(config OllamaConfig) *Ollama {
 		config: config,
 		client: client,
 	}
+}
+
+// NewOllamaFromEnv creates an Ollama provider from environment variables
+// Environment variables: OLLAMA_BASE_URL (optional), OLLAMA_MODEL (optional)
+func NewOllamaFromEnv() *Ollama {
+	return NewOllama(OllamaConfig{
+		BaseURL: utils.GetEnvString("OLLAMA_BASE_URL", OllamaDefaultBaseURL),
+		Model:   utils.GetEnvString("OLLAMA_MODEL", OllamaDefaultModel),
+	})
 }
 
 // Name returns the provider name

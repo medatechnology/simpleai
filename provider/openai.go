@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	medahttp "github.com/medatechnology/goutil/http"
+	"github.com/medatechnology/goutil/utils"
 	"github.com/medatechnology/simpleai"
 )
 
@@ -65,6 +66,16 @@ func NewOpenAI(config OpenAIConfig) *OpenAI {
 		config: config,
 		client: client,
 	}
+}
+
+// NewOpenAIFromEnv creates an OpenAI provider from environment variables
+// Environment variables: OPENAI_API_KEY, OPENAI_MODEL (optional), OPENAI_ORGANIZATION (optional)
+func NewOpenAIFromEnv() *OpenAI {
+	return NewOpenAI(OpenAIConfig{
+		APIKey:       utils.GetEnvString("OPENAI_API_KEY", ""),
+		Model:        utils.GetEnvString("OPENAI_MODEL", OpenAIDefaultModel),
+		Organization: utils.GetEnvString("OPENAI_ORGANIZATION", ""),
+	})
 }
 
 // Name returns the provider name

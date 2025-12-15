@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	medahttp "github.com/medatechnology/goutil/http"
+	"github.com/medatechnology/goutil/utils"
 	"github.com/medatechnology/simpleai"
 )
 
@@ -59,6 +60,15 @@ func NewGroq(config GroqConfig) *Groq {
 		config: config,
 		client: client,
 	}
+}
+
+// NewGroqFromEnv creates a Groq provider from environment variables
+// Environment variables: GROQ_API_KEY, GROQ_MODEL (optional)
+func NewGroqFromEnv() *Groq {
+	return NewGroq(GroqConfig{
+		APIKey: utils.GetEnvString("GROQ_API_KEY", ""),
+		Model:  utils.GetEnvString("GROQ_MODEL", GroqDefaultModel),
+	})
 }
 
 // Name returns the provider name

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	medahttp "github.com/medatechnology/goutil/http"
+	"github.com/medatechnology/goutil/utils"
 	"github.com/medatechnology/simpleai"
 )
 
@@ -58,6 +59,15 @@ func NewGemini(config GeminiConfig) *Gemini {
 		config: config,
 		client: client,
 	}
+}
+
+// NewGeminiFromEnv creates a Gemini provider from environment variables
+// Environment variables: GEMINI_API_KEY, GEMINI_MODEL (optional)
+func NewGeminiFromEnv() *Gemini {
+	return NewGemini(GeminiConfig{
+		APIKey: utils.GetEnvString("GEMINI_API_KEY", ""),
+		Model:  utils.GetEnvString("GEMINI_MODEL", GeminiDefaultModel),
+	})
 }
 
 // Name returns the provider name

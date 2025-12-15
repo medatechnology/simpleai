@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/medatechnology/simpleai"
 	"github.com/medatechnology/simpleai/middleware"
@@ -12,16 +11,11 @@ import (
 )
 
 func main() {
-	// Create primary provider (Anthropic)
-	anthropic := provider.NewAnthropic(provider.AnthropicConfig{
-		APIKey: os.Getenv("ANTHROPIC_API_KEY"),
-		Model:  "claude-3-5-sonnet-20241022",
-	})
+	// Create primary provider (Anthropic) - reads ANTHROPIC_API_KEY from env
+	anthropic := provider.NewAnthropicFromEnv()
 
-	// Create fallback provider (OpenAI)
-	openai := provider.NewOpenAI(provider.OpenAIConfig{
-		APIKey: os.Getenv("OPENAI_API_KEY"),
-	})
+	// Create fallback provider (OpenAI) - reads OPENAI_API_KEY from env
+	openai := provider.NewOpenAIFromEnv()
 
 	// Create client with middleware
 	client := simpleai.NewClient(anthropic,
