@@ -5,6 +5,30 @@ import (
 	"sync"
 )
 
+// AutocompactConfig configures automatic conversation compaction
+type AutocompactConfig struct {
+	// Threshold is the message count that triggers compaction
+	Threshold int
+	// KeepRecent is how many recent messages to preserve (not summarized)
+	KeepRecent int
+	// Summarizer is an optional custom summarizer (uses memory.AISummarizer by default)
+	// If nil, uses the chat client's provider for summarization
+	Summarizer Summarizer
+}
+
+// Summarizer can summarize conversation history (mirrors memory.Summarizer)
+type Summarizer interface {
+	Summarize(ctx context.Context, messages []Message) (string, error)
+}
+
+// DefaultAutocompactConfig returns sensible defaults for autocompact
+func DefaultAutocompactConfig() AutocompactConfig {
+	return AutocompactConfig{
+		Threshold:  20,
+		KeepRecent: 4,
+	}
+}
+
 // Chat represents a conversation session with an AI provider
 type Chat struct {
 	client       *Client
@@ -14,6 +38,10 @@ type Chat struct {
 	maxTokens    int
 	tokenCounter func(string) int
 	mu           sync.RWMutex
+
+	// Autocompact fields
+	autocompact       *AutocompactConfig
+	conversationSummary string // Accumulated summary from compacted messages
 }
 
 // NewChat creates a new chat session
@@ -155,13 +183,24 @@ func (c *Chat) System() string {
 
 // buildMessages constructs the message list for the request
 func (c *Chat) buildMessages() []Message {
-	messages := make([]Message, 0, len(c.history)+1)
+	messages := make([]Message, 0, len(c.history)+2)
 
 	// Add system message if present (for providers that need it in messages)
 	if c.system != "" {
+		systemContent := c.system
+		// Append conversation summary to system prompt if available
+		if c.conversationSummary != "" {
+			systemContent += "\n\n[Previous conversation summary: " + c.conversationSummary + "]"
+		}
 		messages = append(messages, Message{
 			Role:    RoleSystem,
-			Content: c.system,
+			Content: systemContent,
+		})
+	} else if c.conversationSummary != "" {
+		// If no system prompt but we have a summary, add it as a system message
+		messages = append(messages, Message{
+			Role:    RoleSystem,
+			Content: "[Previous conversation summary: " + c.conversationSummary + "]",
 		})
 	}
 
@@ -173,6 +212,12 @@ func (c *Chat) buildMessages() []Message {
 
 // trimHistory removes old messages if over the limit
 func (c *Chat) trimHistory() {
+	// Check if autocompact should be triggered
+	if c.autocompact != nil && len(c.history) >= c.autocompact.Threshold {
+		c.compactHistory()
+		return
+	}
+
 	// Trim by message count
 	if c.historyLimit > 0 && len(c.history) > c.historyLimit {
 		excess := len(c.history) - c.historyLimit
@@ -198,3 +243,81 @@ func (c *Chat) countHistoryTokens() int {
 	}
 	return total
 }
+
+// compactHistory summarizes old messages and keeps only recent ones
+func (c *Chat) compactHistory() {
+	if c.autocompact == nil || len(c.history) < c.autocompact.Threshold {
+		return
+	}
+
+	keepRecent := c.autocompact.KeepRecent
+	if keepRecent >= len(c.history) {
+		return // Nothing to compact
+	}
+
+	// Split history into old (to summarize) and recent (to keep)
+	oldMessages := c.history[:len(c.history)-keepRecent]
+	recentMessages := c.history[len(c.history)-keepRecent:]
+
+	var summaryContent string
+	var err error
+
+	// Unlock before making AI call to avoid deadlock
+	c.mu.Unlock()
+
+	// Use custom summarizer if provided, otherwise use default AI summarization
+	if c.autocompact.Summarizer != nil {
+		summaryContent, err = c.autocompact.Summarizer.Summarize(context.Background(), oldMessages)
+	} else {
+		// Default: use chat client's provider for summarization
+		var conversationText string
+		for _, msg := range oldMessages {
+			conversationText += string(msg.Role) + ": " + msg.Content + "\n\n"
+		}
+
+		summaryReq := &Request{
+			Messages: []Message{
+				{
+					Role:    RoleUser,
+					Content: "Summarize this conversation concisely, preserving key information:\n\n" + conversationText,
+				},
+			},
+			MaxTokens:   500,
+			Temperature: 0.3,
+		}
+
+		summaryResp, reqErr := c.client.Complete(context.Background(), summaryReq)
+		if reqErr != nil {
+			err = reqErr
+		} else {
+			summaryContent = summaryResp.Content
+		}
+	}
+
+	// Relock after AI call
+	c.mu.Lock()
+
+	if err != nil {
+		// If summarization fails, just trim normally
+		c.history = recentMessages
+		return
+	}
+
+	// Append new summary to existing summary
+	if c.conversationSummary != "" {
+		c.conversationSummary = c.conversationSummary + "\n\n" + summaryContent
+	} else {
+		c.conversationSummary = summaryContent
+	}
+
+	// Keep only recent messages
+	c.history = recentMessages
+}
+
+// Summary returns the current conversation summary
+func (c *Chat) Summary() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.conversationSummary
+}
+

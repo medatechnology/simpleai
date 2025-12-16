@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/medatechnology/goutil/utils"
 	"github.com/medatechnology/simpleai"
 	shttp "github.com/medatechnology/simpleai/http"
 	"github.com/medatechnology/simpleai/middleware"
@@ -14,6 +15,9 @@ import (
 )
 
 func main() {
+	// Load environment variables from .env file
+	utils.LoadEnv(".env")
+
 	// Create Mistral provider from environment
 	mistral := provider.NewMistralFromEnv()
 

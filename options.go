@@ -68,3 +68,11 @@ func WithTokenCounter(counter func(string) int) ChatOption {
 		chat.tokenCounter = counter
 	}
 }
+
+// WithAutocompact enables automatic conversation compaction
+// When the conversation exceeds the threshold, older messages are summarized
+func WithAutocompact(config AutocompactConfig) ChatOption {
+	return func(chat *Chat) {
+		chat.autocompact = &config
+	}
+}
