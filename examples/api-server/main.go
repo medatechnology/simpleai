@@ -33,7 +33,7 @@ func main() {
 		})),
 	)
 
-	// Create chat session with Doctor AI system prompt
+	// Create chat session with Doctor AI system prompt and autocompact
 	chat := client.NewChat(
 		simpleai.WithSystem(`You are Dr. AI, a knowledgeable medical assistant.
 Your responsibilities:
@@ -43,6 +43,11 @@ Your responsibilities:
 
 IMPORTANT: Always remind users to consult real healthcare professionals for medical decisions.`),
 		simpleai.WithHistoryLimit(50),
+		// Enable autocompact: summarize when history reaches 10 messages, keep last 4
+		simpleai.WithAutocompact(simpleai.AutocompactConfig{
+			Threshold:  10,
+			KeepRecent: 4,
+		}),
 	)
 
 	// Create HTTP server
