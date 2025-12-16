@@ -10,14 +10,17 @@ go get github.com/medatechnology/simpleai
 
 ## Features
 
-- **Multi-Provider Support**: Anthropic, OpenAI, Gemini, Groq, Ollama
+- **Multi-Provider Support**: Anthropic, OpenAI, Gemini, Groq, Ollama, **Mistral**
 - **Streaming**: Real-time token streaming for all providers
 - **Chat Sessions**: Conversation history with automatic management
+- **Autocompact**: Automatic context summarization for long conversations
 - **Middleware**: Retry with backoff, provider fallback, logging
+- **HTTP Handlers**: Ready-to-use handlers for REST API with SSE streaming
 - **Prompt Templates**: Go templates with helper functions
 - **Memory Management**: Token-based limits, auto-summarization
 - **Embeddings**: OpenAI and Ollama vector embeddings
 - **RAG**: Retrieval-augmented generation with vector store
+- **Docker Support**: Ready-to-deploy container configuration
 
 ## Quick Start
 
@@ -27,23 +30,23 @@ package main
 import (
     "context"
     "fmt"
-    "os"
 
     "github.com/medatechnology/simpleai"
     "github.com/medatechnology/simpleai/provider"
 )
 
 func main() {
-    // Create provider
-    anthropic := provider.NewAnthropic(provider.AnthropicConfig{
-        APIKey: os.Getenv("ANTHROPIC_API_KEY"),
-    })
+    // Create provider from environment variables
+    mistral := provider.NewMistralFromEnv()
 
     // Create client
-    client := simpleai.NewClient(anthropic)
+    client := simpleai.NewClient(mistral)
 
-    // Create chat session
-    chat := client.NewChat(simpleai.WithSystem("You are a helpful assistant."))
+    // Create chat session with autocompact
+    chat := client.NewChat(
+        simpleai.WithSystem("You are a helpful assistant."),
+        simpleai.WithAutocompact(simpleai.DefaultAutocompactConfig()),
+    )
 
     // Send message
     resp, err := chat.Send(context.Background(), "Hello!")
@@ -57,10 +60,29 @@ func main() {
 
 ## Providers
 
+All providers support `NewXFromEnv()` for easy configuration from environment variables.
+
+### Mistral AI
+
+```go
+// From environment: MISTRAL_API_KEY, MISTRAL_MODEL (optional)
+mistral := provider.NewMistralFromEnv()
+
+// Or with config
+mistral := provider.NewMistral(provider.MistralConfig{
+    APIKey: os.Getenv("MISTRAL_API_KEY"),
+    Model:  "mistral-large-latest", // default
+})
+```
+
 ### Anthropic (Claude)
 
 ```go
-provider := provider.NewAnthropic(provider.AnthropicConfig{
+// From environment: ANTHROPIC_API_KEY, ANTHROPIC_MODEL (optional)
+anthropic := provider.NewAnthropicFromEnv()
+
+// Or with config
+anthropic := provider.NewAnthropic(provider.AnthropicConfig{
     APIKey: os.Getenv("ANTHROPIC_API_KEY"),
     Model:  "claude-3-5-sonnet-20241022", // default
 })
@@ -69,7 +91,11 @@ provider := provider.NewAnthropic(provider.AnthropicConfig{
 ### OpenAI
 
 ```go
-provider := provider.NewOpenAI(provider.OpenAIConfig{
+// From environment: OPENAI_API_KEY, OPENAI_MODEL, OPENAI_ORGANIZATION (optional)
+openai := provider.NewOpenAIFromEnv()
+
+// Or with config
+openai := provider.NewOpenAI(provider.OpenAIConfig{
     APIKey: os.Getenv("OPENAI_API_KEY"),
     Model:  "gpt-4o", // default
 })
@@ -78,7 +104,11 @@ provider := provider.NewOpenAI(provider.OpenAIConfig{
 ### Google Gemini
 
 ```go
-provider := provider.NewGemini(provider.GeminiConfig{
+// From environment: GEMINI_API_KEY, GEMINI_MODEL (optional)
+gemini := provider.NewGeminiFromEnv()
+
+// Or with config
+gemini := provider.NewGemini(provider.GeminiConfig{
     APIKey: os.Getenv("GEMINI_API_KEY"),
     Model:  "gemini-1.5-pro", // default
 })
@@ -87,7 +117,11 @@ provider := provider.NewGemini(provider.GeminiConfig{
 ### Groq
 
 ```go
-provider := provider.NewGroq(provider.GroqConfig{
+// From environment: GROQ_API_KEY, GROQ_MODEL (optional)
+groq := provider.NewGroqFromEnv()
+
+// Or with config
+groq := provider.NewGroq(provider.GroqConfig{
     APIKey: os.Getenv("GROQ_API_KEY"),
     Model:  "llama-3.3-70b-versatile", // default
 })
@@ -96,7 +130,11 @@ provider := provider.NewGroq(provider.GroqConfig{
 ### Ollama (Local)
 
 ```go
-provider := provider.NewOllama(provider.OllamaConfig{
+// From environment: OLLAMA_BASE_URL, OLLAMA_MODEL (optional)
+ollama := provider.NewOllamaFromEnv()
+
+// Or with config
+ollama := provider.NewOllama(provider.OllamaConfig{
     BaseURL: "http://localhost:11434", // default
     Model:   "llama3.2",               // default
 })
@@ -120,6 +158,129 @@ for event := range stream {
     }
 }
 ```
+
+## Autocompact (Context Summarization)
+
+Automatically summarize old messages when conversation gets too long:
+
+```go
+chat := client.NewChat(
+    simpleai.WithSystem("You are a helpful assistant."),
+    simpleai.WithAutocompact(simpleai.AutocompactConfig{
+        Threshold:  20,  // Trigger when history reaches 20 messages
+        KeepRecent: 4,   // Keep last 4 messages, summarize the rest
+    }),
+)
+
+// After many messages, older ones are summarized automatically
+// The summary is included in the system prompt for context
+```
+
+## HTTP API Server
+
+SimpleAI includes ready-to-use HTTP handlers for building REST APIs with SSE streaming.
+
+### Quick Setup
+
+```go
+import (
+    "github.com/medatechnology/simpleai"
+    shttp "github.com/medatechnology/simpleai/http"
+    "github.com/medatechnology/simplehttp/framework/fiber"
+)
+
+func main() {
+    client := simpleai.NewClient(provider.NewMistralFromEnv())
+    chat := client.NewChat(simpleai.WithSystem("You are helpful."))
+
+    server := fiber.NewServer(nil)
+
+    // Non-streaming completion
+    server.POST("/api/v1/chat/complete", shttp.CompleteHandler(client))
+
+    // SSE streaming completion
+    server.POST("/api/v1/chat/stream", shttp.StreamHandler(client))
+
+    // Chat session with history
+    server.POST("/api/v1/doctor/chat", shttp.ChatStreamHandler(chat))
+
+    server.Start(":8080")
+}
+```
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| POST | `/api/v1/chat` | Simple chat (non-streaming) |
+| POST | `/api/v1/chat/complete` | OpenAI-compatible completion |
+| POST | `/api/v1/chat/stream` | SSE streaming completion |
+| POST | `/api/v1/doctor/chat` | Doctor AI chat with history |
+
+### Request/Response Examples
+
+#### Simple Chat
+```bash
+curl -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello"}'
+```
+
+Response:
+```json
+{"response": "Hello! How can I help?", "model": "mistral-large-latest", "usage": {...}}
+```
+
+#### Streaming Chat (SSE)
+```bash
+curl -X POST http://localhost:8080/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Tell me a joke"}]}'
+```
+
+Response (SSE):
+```
+data: {"content":"Why","done":false}
+data: {"content":" did","done":false}
+data: {"content":" the programmer...","done":false}
+data: {"done":true,"finish_reason":"stop"}
+```
+
+#### Chat with History
+```bash
+curl -X POST http://localhost:8080/api/v1/doctor/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "I have a headache"}'
+```
+
+## Docker
+
+### Run with Docker Compose
+
+```bash
+# Create .env file
+cp .env.example .env
+# Edit .env with your MISTRAL_API_KEY
+
+# Start server
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MISTRAL_API_KEY` | Yes | - | Mistral AI API key |
+| `MISTRAL_MODEL` | No | `mistral-large-latest` | Model to use |
+| `OPENAI_API_KEY` | No | - | OpenAI API key (fallback) |
+| `SIMPLEHTTP_PORT` | No | `8080` | Server port |
 
 ## Middleware
 
@@ -168,48 +329,32 @@ prompt, _ := engine.Execute("doctor", map[string]any{
 })
 ```
 
-## Integration with Meda Ecosystem
-
-```go
-// Use with simplehttp for REST API
-// Use with simpleorm for persistence
-// Use with goutil for utilities
-
-import (
-    "github.com/medatechnology/simpleai"
-    "github.com/medatechnology/simplehttp"
-    "github.com/medatechnology/simpleorm"
-    "github.com/medatechnology/goutil/utils"
-)
-```
-
-## License
-
-MIT
-
 ## Memory Management
 
 ### Token-Based History
 
 ```go
 chat := client.NewChat(
-    simpleai.WithMaxTokens(4000),  // Limit history to 4000 tokens
+    simpleai.WithMaxTokens(4000),
     simpleai.WithTokenCounter(func(s string) int {
         return len(s) / 4  // ~4 chars per token
     }),
 )
 ```
 
-### Auto-Summarization
+### Custom Summarizer
 
 ```go
 import "github.com/medatechnology/simpleai/memory"
 
 summarizer := memory.NewAISummarizer(provider)
-mem := memory.NewSimpleWithSummarizer(memory.MemoryConfig{
-    MaxTokens:      4000,
-    SummarizeAfter: 20,  // Summarize after 20 messages
-}, summarizer)
+chat := client.NewChat(
+    simpleai.WithAutocompact(simpleai.AutocompactConfig{
+        Threshold:  20,
+        KeepRecent: 4,
+        Summarizer: summarizer,  // Use custom summarizer
+    }),
+)
 ```
 
 ## Embeddings
@@ -239,19 +384,18 @@ import (
     "github.com/medatechnology/simpleai/rag"
 )
 
-// Create embedder and vector store
 embedder := embedding.NewOpenAI(...)
 store := rag.NewMemoryStore()
 
-// Create RAG instance
 r := rag.New(embedder, store, rag.Config{
     TopK:          5,
     MinSimilarity: 0.7,
 })
 
-// Add messages to RAG
 r.AddMessage(ctx, msg, "msg_1")
-
-// Retrieve relevant context
 context, _ := r.BuildContext(ctx, "What did we discuss about headaches?")
 ```
+
+## License
+
+MIT
