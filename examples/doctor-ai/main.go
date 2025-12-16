@@ -11,14 +11,14 @@ import (
 )
 
 func main() {
-	// Create primary provider (Anthropic) - reads ANTHROPIC_API_KEY from env
-	anthropic := provider.NewAnthropicFromEnv()
+	// Create primary provider (Mistral) - reads MISTRAL_API_KEY from env
+	mistral := provider.NewMistralFromEnv()
 
 	// Create fallback provider (OpenAI) - reads OPENAI_API_KEY from env
 	openai := provider.NewOpenAIFromEnv()
 
 	// Create client with middleware
-	client := simpleai.NewClient(anthropic,
+	client := simpleai.NewClient(mistral,
 		simpleai.WithMiddleware(middleware.RetrySimple(3)),
 		simpleai.WithMiddleware(middleware.FallbackSimple(openai)),
 		simpleai.WithMiddleware(middleware.SimpleLogger(func(msg string) {
